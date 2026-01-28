@@ -14,5 +14,6 @@ int main() {
     size_t startPos = rawJson.find(key) + key.length();
     size_t endPos =  rawJson.find("\"", startPos) - startPos;
     std::cout << "Hello, World! Version: " << rawJson.substr(startPos, endPos) << std::endl;
+    std::cin>> rawJson;
     return 0;
 }
