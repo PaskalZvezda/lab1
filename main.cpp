@@ -1,42 +1,54 @@
 #include <iostream>
-#include <cstdio>
-#include <memory>
-#include <stdexcept>
 #include <string>
 #include <array>
+#include <cstdio>
 
-std::string getVersionSimple(const std::string& repo) {
+// Исправляем имена функций для Windows
+#ifdef _WIN32
+    #define POPEN _popen
+    #define PCLOSE _pclose
+#else
+    #define POPEN popen
+    #define PCLOSE pclose
+#endif
+
+std::string getGithubVersion(const std::string& repo) {
+    std::string command = "curl -s https://api.github.com/repos/" + repo + "/releases/latest";
     std::array<char, 128> buffer;
-    std::string result;
+    std::string rawJson;
+
+    // 1. Читаем весь ответ от GitHub в строку
+    FILE* pipe = POPEN(command.c_str(), "r");
+    if (!pipe) return "Ошибка запуска curl";
+
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        rawJson += buffer.data();
+    }
+    PCLOSE(pipe);
+
+    // 2. Ищем "tag_name" в тексте вручную (чтобы не зависеть от grep)
+    std::string key = "\"tag_name\":\"";
+    size_t startPos = rawJson.find(key);
     
-    // Команда: скачиваем JSON, ищем "tag_name", вырезаем значение между кавычек
-    // Используем флаг -s (silent), чтобы не спамить прогресс-баром
-    std::string command = "curl -s https://api.github.com/repos/" + repo + "/releases/latest | grep -m 1 \"tag_name\" | cut -d '\"' -f 4";
+    if (startPos == std::string::npos) {
+        return "Версия не найдена (проверьте наличие релизов)";
+    }
 
-    // Открываем поток для чтения вывода команды
-    std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(command.c_str(), "r"), _pclose);
+    startPos += key.length();
+    size_t endPos = rawJson.find("\"", startPos);
     
-    if (!pipe) {
-        return "Ошибка при запуске curl";
-    }
-
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-
-    // Убираем лишний символ переноса строки в конце
-    if (!result.empty() && result.back() == '\n') {
-        result.pop_back();
-    }
-
-    return result.empty() ? "Версия не найдена" : result;
+    return rawJson.substr(startPos, endPos - startPos);
 }
 
 int main() {
+    // Устанавливаем кодировку консоли, чтобы не было "кракозябр"
+    system("chcp 65001 > nul"); 
+    
     std::string repo = "nlohmann/json";
-    std::string version = getVersionSimple(repo);
+    std::cout << "Проверка репозитория: " << repo << "..." << std::endl;
     
+    std::string version = getGithubVersion(repo);
     std::cout << "Последняя версия: " << version << std::endl;
-    
+
     return 0;
 }
